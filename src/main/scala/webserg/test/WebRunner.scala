@@ -25,16 +25,22 @@ import org.junit
 import akka.testkit.{TestActorRef, ImplicitSender, TestKit}
 import org.scalatest.{WordSpec, WordSpecLike, Matchers, BeforeAndAfterAll}
 import org.scalatest.matchers.{Matcher, MustMatchers}
+import org.eclipse.jetty.util.thread.QueuedThreadPool
+import java.nio.file
+import java.nio.file.Paths
+
 
 object WebRunner {
 
   implicit val system = ActorSystem("System")
-  val f1Name = "c://devel//csv1.csv"
-  val f2Name = "c://devel//csv2.csv"
+  val f1Name = "csv1.csv"
+  val f2Name = "csv2.csv"
 
   def main(args: Array[String]) {
-
+    println(Paths.get(".").toAbsolutePath)
     val server = new Server(8080)
+    val pool = new QueuedThreadPool()
+    server.addBean(pool)
 
     val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
     context.setContextPath("/")
@@ -56,7 +62,5 @@ object WebRunner {
     server.join
     system.shutdown()
   }
-
-  val getDataFromF2: Array[String] = Source.fromFile(WebRunner.f2Name).getLines.flatMap(_.split(",")).toArray
 }
 

@@ -2,7 +2,7 @@ package webserg.test
 
 import javax.ws.rs._
 import akka.actor._
-import scala.concurrent.Await
+import scala.concurrent.{TimeoutException, Await}
 import scala.io.Source
 import scala.concurrent.ExecutionContext.Implicits.global
 import javax.ws.rs.core.Context
@@ -17,38 +17,41 @@ import org.junit
 import akka.testkit.{TestActorRef, ImplicitSender, TestKit}
 import org.scalatest.{WordSpec, WordSpecLike, Matchers, BeforeAndAfterAll}
 import org.scalatest.matchers.{Matcher, MustMatchers}
+import javax.servlet.http.HttpServletResponse
 
 @Path("/helloactor")
 class RestService {
-
+  val getDataFromF2: Array[String] = Source.fromFile(WebRunner.f2Name).getLines.flatMap(_.split(",")).toArray
   val readingRouter = WebRunner.system.actorSelection("/user/ReadingRobinRouter")
   val writer = WebRunner.system.actorSelection("/user/Writer")
 
   @GET
   def hello(@QueryParam("v1") v1: String) = {
-    implicit val timeout = Timeout(15 seconds)
+    implicit val timeout = Timeout(5 seconds)
     val future = readingRouter ? v1.toInt
     val result = Await.result(future, timeout.duration)
+    val name = Thread.currentThread().getName
     <result>{result}</result>.toString()
+
   }
+
+
 
   @POST
   @Path("/post")
   def hello(@QueryParam("v2") v2: String, @QueryParam("v3") v3: String, @QueryParam("v4") v4: String) = {
-    implicit val timeout = Timeout(15 seconds)
+    implicit val timeout = Timeout(5 seconds)
     val future = writer ? new PostValues(v2.toInt, v3.toInt, v4.toInt)
     val result = Await.result(future, timeout.duration)
     <result>{result}</result>.toString()
-    //    future onComplete {
-    //      case Success(result) => <result>result</result>.toString()
-    //      case Failure(t) => <result>0</result>.toString()
-    //    }
   }
 
 }
 
 class Reading extends Actor with ActorLogging {
-  var f2 = WebRunner.getDataFromF2.map(_.toInt)
+  def f2FileToArray() = Source.fromFile(WebRunner.f2Name).getLines.flatMap(_.split(",")).toArray
+
+  var f2 = f2FileToArray().map(_.toInt)
 
   def receive = {
     case v1: Int => {
@@ -57,7 +60,9 @@ class Reading extends Actor with ActorLogging {
       val res = if (v > 10) v - 10 else v
       sender ! res
     }
-    case Update => f2 = WebRunner.getDataFromF2.map(_.toInt)
+    case Update =>
+      f2 = f2FileToArray().map(_.toInt)
+      log.info("UPDATE")
   }
 }
 
@@ -66,8 +71,8 @@ case object Update
 case class PostValues(v2: Int, v3: Int, v4: Int)
 
 class Writer extends Actor with ActorLogging {
-  var f1 = Source.fromFile(WebRunner.f1Name).getLines.flatMap(_.split(",")).toArray.map(_.toInt)
-  var f2 = WebRunner.getDataFromF2
+  val f1 = Source.fromFile(WebRunner.f1Name).getLines.flatMap(_.split(",")).toArray.map(_.toInt)
+  val f2 = Source.fromFile(WebRunner.f2Name).getLines.flatMap(_.split(",")).toArray
   val readingRouter = WebRunner.system.actorSelection("/user/ReadingRobinRouter")
 
   def receive = {
@@ -78,9 +83,7 @@ class Writer extends Actor with ActorLogging {
       log.info(res.toString)
       setDataToFile(WebRunner.f2Name, f2)
       readingRouter ! Broadcast(Update)
-      sender ! 1
-
-
+      sender ! 0
   }
 
   def setDataToFile(filename: String, data: Array[String]) {
